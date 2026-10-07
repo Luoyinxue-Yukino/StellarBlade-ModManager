@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 
 from ...core import audit
 from ...core.audit import AUDIT_DIR_NAME, AUDIT_EXE_NAME, ToolLocation
+from ...core.formatting import truncate_middle
 from ...services.context import AppContext
 from ..icons import icon
 from ..theme import Palette
@@ -117,24 +118,56 @@ class ToolSetupDialog(QDialog):
 
         download_text = QVBoxLayout()
         download_text.setSpacing(2)
-        download_title = QLabel("下载 DekPakModAudit", card)
+        download_title = QLabel(f"下载 {audit.SEARCH_HINT}", card)
         download_title.setStyleSheet("font-size: 13px; font-weight: 600;")
         download_text.addWidget(download_title)
 
         url = self._download_url()
         hint = QLabel(
-            "点右侧按钮打开发布页。" if url else "请向本管理器的分发者索取下载地址。",
+            f"它不在本管理器内（作者未公开许可证，无法随包分发），"
+            f"需要你自己去 {audit.SEARCH_SITE} 下载，解压即用。",
             card,
         )
         hint.setProperty("role", "muted")
         hint.setStyleSheet("font-size: 12px;")
+        hint.setWordWrap(True)
         download_text.addWidget(hint)
+
+        # 地址单独一行、可选中：即便「打开下载页」因为默认浏览器或网络问题点不动，
+        # 用户也能手动复制出去。地址失效时给检索词，别让人卡在这一步。
+        self.url_label = QLabel(url or self._fallback_search_text(), card)
+        self.url_label.setProperty("mono", "true")
+        self.url_label.setStyleSheet(
+            f"font-size: 11px; color: {self.colors.text_faint};"
+        )
+        self.url_label.setWordWrap(True)
+        self.url_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        download_text.addWidget(self.url_label)
         download_row.addLayout(download_text, 1)
 
+        download_buttons = QVBoxLayout()
+        download_buttons.setSpacing(8)
+
+        open_btn = button(
+            "打开下载页", variant="primary", icon_name="external",
+            palette=self.colors, parent=card,
+        )
+        open_btn.setEnabled(bool(url))
         if url:
-            open_btn = button("打开下载页", icon_name="external", palette=self.colors, parent=card)
-            open_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(url)))
-            download_row.addWidget(open_btn, 0, Qt.AlignVCenter)
+            open_btn.clicked.connect(lambda: self._open_download_page(url))
+        else:
+            open_btn.setToolTip("没有可用的默认地址，请手动搜索或到设置里填一个")
+        download_buttons.addWidget(open_btn)
+
+        # 复制按钮始终可用：地址打不开时它是最后一条退路
+        copy_url_btn = button("复制地址", icon_name="copy", palette=self.colors, parent=card)
+        copy_url_btn.clicked.connect(self._copy_download_url)
+        copy_url_btn.setToolTip(
+            "复制下载地址" if url else "复制检索关键词"
+        )
+        download_buttons.addWidget(copy_url_btn)
+        download_buttons.addStretch(1)
+        download_row.addLayout(download_buttons)
 
         layout.addLayout(download_row)
         layout.addWidget(Divider(card))
@@ -164,10 +197,14 @@ class ToolSetupDialog(QDialog):
         self.layout_label.setStyleSheet(
             f"font-size: 11px; color: {self.colors.text_faint};"
         )
-        self.layout_label.setText(
-            f"放好后应当是这样：  {game_root or '<游戏目录>'}\\{AUDIT_DIR_NAME}\\{AUDIT_EXE_NAME}"
+        # 路径里没有空格，自动换行断不开，会直接撑出卡片被截掉。
+        # 中间省略 + 完整路径进 tooltip 是项目里处理长路径的统一做法。
+        full_hint = (
+            f"放好后应当是这样：  {game_root or '<游戏目录>'}\\"
+            f"{AUDIT_DIR_NAME}\\{AUDIT_EXE_NAME}"
         )
-        self.layout_label.setWordWrap(True)
+        self.layout_label.setText(truncate_middle(full_hint, 72))
+        self.layout_label.setToolTip(full_hint)
         place_text.addWidget(self.layout_label)
 
         place_row.addLayout(place_text, 1)
@@ -259,7 +296,9 @@ class ToolSetupDialog(QDialog):
     def _refresh_status(self) -> None:
         tool = self.context.audit_tool
         if tool is not None and tool.has_config:
-            self.status_label.setText(f"✔ 已找到：{tool.executable}")
+            # 长路径同样要中间省略，否则会把窗口撑变形
+            self.status_label.setText(f"✔ 已找到：{truncate_middle(str(tool.executable), 68)}")
+            self.status_label.setToolTip(str(tool.executable))
             self.status_label.setStyleSheet(
                 f"font-size: 12px; color: {self.colors.success};"
             )
@@ -289,6 +328,34 @@ class ToolSetupDialog(QDialog):
 
     def _download_url(self) -> str:
         return self.context.config.audit_download_url or audit.DOWNLOAD_URL
+
+    def _fallback_search_text(self) -> str:
+        """地址不可用时给出的检索提示。
+
+        直接告诉用户「搜什么、在哪搜」，比让他们去问一个不存在的「分发者」有用。
+        """
+        return f"在 {audit.SEARCH_SITE} 搜索「{audit.SEARCH_HINT}」（默认地址不可用）"
+
+    def _open_download_page(self, url: str) -> None:
+        """打开发布页；打不开时退回复制地址，别让用户卡在这一步。"""
+        if QDesktopServices.openUrl(QUrl(url)):
+            return
+        self._copy_download_url()
+        self.context.notify(
+            "打不开默认浏览器，地址已复制到剪贴板，可手动粘贴打开", "warning"
+        )
+
+    def _copy_download_url(self) -> None:
+        """复制下载地址；没有地址时复制检索词。"""
+        url = self._download_url()
+        text = url or audit.SEARCH_HINT
+        clipboard = QGuiApplication.clipboard()
+        if clipboard is not None:
+            clipboard.setText(text)
+        self.context.notify(
+            "下载地址已复制" if url else f"检索词「{text}」已复制，去 {audit.SEARCH_SITE} 搜它",
+            "success",
+        )
 
     def _copy_game_root(self) -> None:
         clipboard = QGuiApplication.clipboard()

@@ -338,6 +338,17 @@ def main() -> int:
     save(error, out_dir, "08-error.png")
     error.close()
 
+    # 缺检测工具时的引导：冲突检测的前置条件，属于首次使用体验的一部分
+    from stellar_mod_manager.ui.dialogs.tool_setup_dialog import ToolSetupDialog
+
+    config.audit_tool_dir = str(sandbox / "no-such-tool")  # 确保处于「没找到」状态
+    setup = ToolSetupDialog(window.context, colors)
+    setup.resize(680, 470)
+    setup.show()
+    settle(app, 300)
+    save(setup, out_dir, "09-tool-setup.png")
+    setup.close()
+
     window.close()
     print(f"\n沙箱目录（可直接删除）：{sandbox}")
     print(f"版本：{__version__}")

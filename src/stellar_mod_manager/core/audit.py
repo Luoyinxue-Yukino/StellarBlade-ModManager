@@ -49,16 +49,36 @@ LOGIC_MODS_FOLDER = "LogicMods"
 #: 默认超时（秒）。实测约 60 个 Mod 只需 5 秒，给足余量。
 DEFAULT_TIMEOUT_S = 300
 
-#: 工具的获取入口，显示在「未安装检测工具」引导对话框里。
+#: 工具的发布页，显示在「未安装检测工具」引导对话框里。
 #:
-#: 为什么默认为空
-#: --------------
-#: 本管理器**不附带也不打包** DekPakModAudit：它的发布目录里没有许可证文件，
-#: 也没有可核实的源码地址，无法确认再分发授权。所以这里不预设任何地址。
+#: 为什么只给链接、不打包
+#: ----------------------
+#: DekPakModAudit 是 Dekita 的第三方工具（C#，StellarBlade 专用 pak 审计器），
+#: **没有许可证文件**——GitHub API 报告 ``license: null``。
+#: 没有许可证即默认「保留所有权利」，再分发会构成侵权。
+#: 所以本管理器不附带、不打包它；但**链接到官方仓库不构成再分发**，
+#: 引导用户自己去下载是正确且唯一的做法。
 #:
-#: 分发者如果确认了官方发布页，把地址填在这里（或写进用户配置项
-#: ``audit_download_url``），界面上的「打开下载页」按钮就会出现。
-DOWNLOAD_URL = ""
+#: 为什么指向 releases 页而不是某个具体 zip
+#: ----------------------------------------
+#: 作者目前发到 Alpha v0.0.3。硬编码 `DekPakModAudit-v003.zip` 会在作者发新版后
+#: 变成陈旧链接；指向 ``releases/latest`` 则永远拿最新版，路径也不会失效。
+#:
+#: 用户可以覆盖
+#: ------------
+#: 在「设置 → 冲突检测」里填自己的地址会写入 ``audit_download_url`` 并优先使用。
+#: 地址失效也不影响其它功能——只是第 1 步少一个按钮。
+DOWNLOAD_URL = "https://github.com/Dekita/DekPakModAudit/releases/latest"
+
+#: 项目主页。发布页里找不到东西时可以回退到这里。
+PROJECT_URL = "https://github.com/Dekita/DekPakModAudit"
+
+#: 地址不可用时的兜底检索词。让用户至少知道该搜什么，
+#: 而不是丢一句「请向分发者索取」——开源发布没有「分发者」可问。
+SEARCH_HINT = "DekPakModAudit"
+
+#: 引导文案里展示的来源名，配合 :data:`SEARCH_HINT` 使用。
+SEARCH_SITE = "GitHub"
 
 #: 工具在无控制台时必然抛出的异常特征，属于预期噪声，不该当成失败。
 _READKEY_NOISE = "Cannot read keys"

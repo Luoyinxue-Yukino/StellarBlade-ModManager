@@ -234,6 +234,97 @@ def test_forget_task_does_not_clear_someone_elses_task(window: MainWindow, qapp)
     assert page._task is new
 
 
+# ---------------------------------------------------------------------------
+# 缺检测工具时的引导
+# ---------------------------------------------------------------------------
+
+
+def _setup_dialog(window: MainWindow):
+    from stellar_mod_manager.ui.dialogs.tool_setup_dialog import ToolSetupDialog
+
+    return ToolSetupDialog(window.context, window.colors, window)
+
+
+def test_audit_tool_has_a_default_download_page() -> None:
+    """工具不随包分发，所以必须给出一条用户自己能走完的路。
+
+    默认地址为空时，第 1 步只剩「请向分发者索取」——开源发布没有分发者可问。
+    """
+    from stellar_mod_manager.core import audit
+
+    assert audit.DOWNLOAD_URL, "默认下载地址为空，用户无从下手"
+    assert audit.DOWNLOAD_URL.startswith("https://")
+    assert audit.SEARCH_HINT, "至少要有检索词兜底"
+
+
+def test_setup_dialog_shows_the_download_url(window: MainWindow) -> None:
+    from stellar_mod_manager.core import audit
+
+    window.context.config.audit_download_url = ""
+    dialog = _setup_dialog(window)
+    assert audit.PROJECT_URL in dialog.url_label.text()
+    dialog.close()
+
+
+def test_setup_dialog_config_url_overrides_default(window: MainWindow) -> None:
+    """自定义地址优先——默认地址失效时用户能自己换一个。"""
+    window.context.config.audit_download_url = "https://example.invalid/tool"
+    dialog = _setup_dialog(window)
+    assert dialog._download_url() == "https://example.invalid/tool"
+    assert "example.invalid" in dialog.url_label.text()
+    dialog.close()
+
+
+def test_setup_dialog_falls_back_to_search_hint(window: MainWindow) -> None:
+    """地址不可用时给检索词，而不是让用户去问「分发者」。"""
+    from stellar_mod_manager.core import audit
+
+    window.context.config.audit_download_url = ""
+    original = audit.DOWNLOAD_URL
+    try:
+        audit.DOWNLOAD_URL = ""
+        dialog = _setup_dialog(window)
+        text = dialog.url_label.text()
+        assert audit.SEARCH_HINT in text
+        assert "分发者" not in text
+        assert not dialog._download_url()
+        dialog.close()
+    finally:
+        audit.DOWNLOAD_URL = original
+
+
+def test_setup_dialog_copy_button_always_works(window: MainWindow) -> None:
+    """地址打不开时，「复制地址」是最后一条退路，不能因为没地址就禁用。"""
+    from PySide6.QtGui import QGuiApplication
+
+    from stellar_mod_manager.core import audit
+
+    original = audit.DOWNLOAD_URL
+    try:
+        audit.DOWNLOAD_URL = ""
+        window.context.config.audit_download_url = ""
+        dialog = _setup_dialog(window)
+        dialog._copy_download_url()
+        clipboard = QGuiApplication.clipboard()
+        assert clipboard is not None
+        assert clipboard.text() == audit.SEARCH_HINT
+        dialog.close()
+    finally:
+        audit.DOWNLOAD_URL = original
+
+
+def test_setup_dialog_copy_copies_the_url_when_present(window: MainWindow) -> None:
+    from PySide6.QtGui import QGuiApplication
+
+    window.context.config.audit_download_url = "https://example.invalid/x"
+    dialog = _setup_dialog(window)
+    dialog._copy_download_url()
+    clipboard = QGuiApplication.clipboard()
+    assert clipboard is not None
+    assert clipboard.text() == "https://example.invalid/x"
+    dialog.close()
+
+
 def test_theme_rebuild_keeps_current_page(counting_window: _CountingWindow) -> None:
     counting_window._switch_page("archives", force=True)
     counting_window._on_theme_changed("light")
@@ -806,7 +897,12 @@ def test_tool_setup_dialog_guides_when_tool_absent(
         assert "尚未找到" in dialog.status_label.text()
         # 游戏目录要显示出来，用户才知道该放哪
         assert str(game) in dialog.game_path_edit.text()
-        assert str(game) in dialog.layout_label.text()
+        # 布局提示里的路径会中间省略（长路径没有空格、换行断不开，会撑破卡片），
+        # 但完整路径必须在 tooltip 里，用户悬停就能拿到
+        hint_tooltip = dialog.layout_label.toolTip()
+        assert str(game) in hint_tooltip
+        assert "DekPakModAudit" in hint_tooltip
+        assert dialog.layout_label.text().startswith("放好后应当是这样")
         assert dialog.retry_btn.isEnabled()
     finally:
         dialog.deleteLater()
