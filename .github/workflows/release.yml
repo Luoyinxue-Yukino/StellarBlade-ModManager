@@ -1,0 +1,56 @@
+name: Build release
+
+# 推送形如 v0.1.0 的 tag 时，自动打出免安装压缩包并挂到 Release 上。
+#
+# 也可以手动触发（Actions 页 → Run workflow），用来验证打包流程没坏——
+# 手动触发只上传 artifact，不会创建 Release。
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # 界面是 Windows 专属的（Qt 平台插件、路径习惯），只能在 windows 上打
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: 同步依赖
+        run: uv sync
+
+      - name: 跑测试
+        # 测试不过就不该出包——打包出来的东西是要给人下载的
+        run: uv run pytest -q
+
+      - name: 打包
+        run: uv run python tools/build_release.py
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: SB-Mod-Manager-win64
+          path: dist/*.zip
+          if-no-files-found: error
+
+      - name: 附加到 Release
+        # 只在 tag 触发时执行；手动触发时跳过
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true
+          body: |
+            免安装版：下载下面的 zip，解压到任意位置，双击 `SB-Mod-Manager.exe` 即可。
+
+            首次启动会自动探测游戏目录；没探测到就到「设置」里手动指定。
+
+            完整的更新说明由 GitHub 自动生成，见下方。

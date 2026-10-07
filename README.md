@@ -577,6 +577,45 @@ uv run python tools\preview.py --offscreen      # 无头渲染，仅看布局
 真实数据下的验收步骤见 [`docs/验收测试清单.md`](docs/验收测试清单.md)，
 按风险从低到高分了六轮，每步都写了预期结果。
 
+### 打包免安装版
+
+```powershell
+uv run python tools\build_release.py
+```
+
+产物：`dist/SB-Mod-Manager-v<版本>-win64.zip`（约 39 MB，解压后约 99 MB）。
+
+```
+SB-Mod-Manager/
+├── SB-Mod-Manager.exe      # 双击即用，不需要装 Python
+├── _internal\              # Qt 运行时与 Python 解释器
+├── 使用说明.txt
+└── LICENSE
+```
+
+**为什么是免安装压缩包而不是安装器**：省掉 Inno Setup 那层、不写注册表、
+出问题让用户换个目录解压就行。更实际的原因是——**未签名的 exe 会触发
+SmartScreen 警告**（"Windows 已保护你的电脑"），做安装器并不能绕开它，
+反而多一层可能失败的环节。等有了代码签名证书再考虑。
+
+**体积构成**（约 99 MB 解压后）：
+
+| 项 | 大小 | 能否去掉 |
+|---|---|---|
+| `opengl32sw.dll` | 19.7 MB | 理论可以（软件 OpenGL 兜底）。但它是显卡驱动异常时的退路，删掉会在少数机器上直接启动失败——v0.1.0 先留着，等有反馈再说 |
+| Qt6Core / Gui / Widgets | 25 MB | 不能 |
+| `libcrypto` / `libssl` | 9 MB | 不能（py7zr 解加密 7z 要用） |
+| Python 运行时 | 7 MB | 不能 |
+
+已经排除的：QML/Quick 全家桶、Designer、Qt 开发工具、Network/Sql/DBus/OpenXml、
+OpenGL 模块——这些占了 PySide6 原始体积的一大半。
+
+**为什么关掉 UPX**：UPX 压缩后的 exe 常被杀毒软件按启发式规则报毒。
+对让用户下载的工具来说，"被 Defender 拦下来"比"大 30 MB"糟糕得多。
+
+> CI 会在推送 `v*` tag 时自动打包并挂到 GitHub Release；
+> 也可以在 Actions 页手动触发，只产出 artifact、不建 Release。
+
 ---
 
 ## 6. 功能现状
