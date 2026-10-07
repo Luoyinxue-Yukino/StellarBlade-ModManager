@@ -29,7 +29,7 @@ from ...core.translate import (
     build_plan,
 )
 from ...services.context import AppContext
-from ...services.worker import Task
+from ...services.worker import Task, is_running
 from ..icons import icon
 from ..theme import Palette, banner_style
 from ..widgets.common import button
@@ -321,7 +321,7 @@ class TranslateDialog(QDialog):
     # ------------------------------------------------------------------
 
     def _start_translation(self) -> None:
-        if self._task is not None and self._task.isRunning():
+        if is_running(self._task):
             return
 
         engine = self.context.translator
@@ -352,8 +352,15 @@ class TranslateDialog(QDialog):
         task.succeeded.connect(self._on_translated)
         task.failed.connect(self._on_failed)
         task.cancelled_signal.connect(self._on_cancelled)
+        # finished 一定会发，用它兜底清引用；只接 succeeded/failed 会漏掉取消路径
+        task.finished.connect(lambda: self._forget_task(task))
         self._task = task
         self.context.tasks.start(task)
+
+    def _forget_task(self, task: Task) -> None:
+        """任务结束后解除引用（C++ 对象会被 deleteLater() 销毁）。"""
+        if self._task is task:
+            self._task = None
 
     def _on_progress(self, done: int, total: int, message: str) -> None:
         self.summary_label.setText(f"{message}（{done}/{total}）")
@@ -391,7 +398,7 @@ class TranslateDialog(QDialog):
         self._refresh_summary()
 
     def _cancel_translation(self) -> None:
-        if self._task is not None and self._task.isRunning():
+        if is_running(self._task):
             self._task.request_cancel()
             self.summary_label.setText("正在取消…")
 
@@ -469,7 +476,7 @@ class TranslateDialog(QDialog):
     # ------------------------------------------------------------------
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt 命名
-        if self._task is not None and self._task.isRunning():
+        if is_running(self._task):
             self._task.request_cancel()
         self.context.save_translation_cache()
         super().closeEvent(event)

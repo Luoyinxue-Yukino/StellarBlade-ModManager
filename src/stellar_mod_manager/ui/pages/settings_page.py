@@ -430,8 +430,14 @@ class SettingsPage(Page):
         )
         task.succeeded.connect(self._on_test_ok)
         task.failed.connect(self._on_test_failed)
+        task.finished.connect(lambda: self._forget_test_task(task))
         self._test_task = task
         self.context.tasks.start(task)
+
+    def _forget_test_task(self, task: Task) -> None:
+        """任务结束后解除引用（C++ 对象会被 deleteLater() 销毁）。"""
+        if self._test_task is task:
+            self._test_task = None
 
     def _on_test_ok(self, result: list[str]) -> None:
         self.translate_test_btn.setEnabled(True)

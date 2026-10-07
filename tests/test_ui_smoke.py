@@ -159,6 +159,81 @@ def test_theme_rebuild_does_not_duplicate_signal_handlers(
     assert counting_window.audit_calls == 2
 
 
+# ---------------------------------------------------------------------------
+# 任务结束后的引用安全
+# ---------------------------------------------------------------------------
+
+
+def _dead_task(qapp) -> object:
+    """造一个「已跑完且 C++ 对象已销毁」的任务。"""
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    from stellar_mod_manager.services.worker import Task
+
+    task = Task(lambda t: None, label="测试")
+    task.start()
+    assert task.wait(5000)
+    task.deleteLater()
+    # processEvents() 不处理 DeferredDelete，必须显式投递
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qapp.processEvents()
+    return task
+
+
+def test_archives_update_buttons_survives_dead_task(window: MainWindow, qapp) -> None:
+    """回归：扫描任务结束后 _task 仍指向已销毁对象，点选表格就崩。
+
+    真实报错：
+        RuntimeError: libshiboken: Internal C++ object (Task) already deleted.
+        File "archives_page.py", line 501, in _update_buttons
+    """
+    page = window._pages["archives"]
+    page._task = _dead_task(qapp)
+
+    # 不能抛异常
+    page._update_buttons()
+    page._cancel()
+
+
+def test_import_update_buttons_survives_dead_task(window: MainWindow, qapp) -> None:
+    page = window._pages["import"]
+    page._task = _dead_task(qapp)
+    page._update_buttons()
+
+
+def test_task_reference_is_cleared_on_finish(window: MainWindow, qapp) -> None:
+    """finished 兜底：任务结束时页面应主动解除引用。
+
+    取消路径不会发 succeeded/failed，只接那两个信号的话引用会一直留着。
+    """
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    from stellar_mod_manager.services.worker import Task
+
+    page = window._pages["archives"]
+    task = Task(lambda t: None, label="清引用检查")
+    task.finished.connect(lambda: page._forget_task(task))
+    page._task = task
+    task.start()
+    assert task.wait(5000)
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qapp.processEvents()
+
+    assert page._task is None
+
+
+def test_forget_task_does_not_clear_someone_elses_task(window: MainWindow, qapp) -> None:
+    """后启动的任务不该被先结束的那个清掉。"""
+    from stellar_mod_manager.services.worker import Task
+
+    page = window._pages["archives"]
+    old = Task(lambda t: None, label="旧的")
+    new = Task(lambda t: None, label="新的")
+    page._task = new
+    page._forget_task(old)
+    assert page._task is new
+
+
 def test_theme_rebuild_keeps_current_page(counting_window: _CountingWindow) -> None:
     counting_window._switch_page("archives", force=True)
     counting_window._on_theme_changed("light")

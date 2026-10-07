@@ -86,6 +86,27 @@ class TaskCancelled(Exception):
     """工作函数用抛出它来响应取消请求。"""
 
 
+def is_running(task: "Task | None") -> bool:
+    """安全地判断任务是否仍在运行。
+
+    为什么不直接 ``task.isRunning()``：任务结束后 :class:`TaskManager` 会调用
+    ``deleteLater()``，其 **C++ 对象随即被销毁**，而 Python 侧的包装对象还留着。
+    此时任何方法调用都会抛 :class:`RuntimeError`：
+
+        RuntimeError: libshiboken: Internal C++ object (Task) already deleted.
+
+    界面很难保证在每个路径上都及时把引用置空（尤其是有多个信号分支时），
+    所以统一的判断入口要自己扛住这种情况——「已经没了」本来就等于「没在运行」。
+    """
+    if task is None:
+        return False
+    try:
+        return task.isRunning()
+    except RuntimeError:
+        # C++ 对象已销毁，等价于「不在运行」
+        return False
+
+
 class TaskManager(QObject):
     """持有正在运行的任务引用，防止被 GC 提前回收。"""
 

@@ -37,7 +37,7 @@ from ...core.archive import (
 )
 from ...core.formatting import human_size, truncate_middle
 from ...core.models import ArchiveInspection
-from ...services.worker import Task, TaskCancelled
+from ...services.worker import Task, TaskCancelled, is_running
 from ..theme import SPACE_LG, SPACE_MD, SPACE_SM
 from ..widgets.common import Card, EmptyState, button
 from .base import Page, card_header
@@ -336,11 +336,29 @@ class ArchivesPage(Page):
 
         task = Task(lambda t: self._work_inspect(t, rows), self, label="分析压缩包")
         task.progressed.connect(self._on_inspect_progress)
-        task.succeeded.connect(lambda _: self.status_label.setText("分析完成"))
-        task.failed.connect(lambda msg: self.status_label.setText(f"分析失败：{msg}"))
+        task.succeeded.connect(self._on_inspect_finished)
+        task.failed.connect(self._on_inspect_failed)
+        # 无论成功、失败还是取消，都要把引用清掉。只接 succeeded/failed 会漏掉
+        # 取消路径；一旦漏掉，self._task 就指向一个已被 deleteLater() 销毁的
+        # C++ 对象，之后任何 _update_buttons() 都会抛 RuntimeError。
+        # finished 是唯一「一定会发」的信号，用它兜底。
+        task.finished.connect(lambda: self._forget_task(task))
         self._task = task
         self.status_label.setText("正在分析压缩包…")
         self.context.tasks.start(task)
+
+    def _forget_task(self, task: Task) -> None:
+        """任务结束后解除引用——只清掉确实属于自己的那一个。"""
+        if self._task is task:
+            self._task = None
+
+    def _on_inspect_finished(self, _total: object) -> None:
+        self.status_label.setText("分析完成")
+        self._update_buttons()
+
+    def _on_inspect_failed(self, message: str) -> None:
+        self.status_label.setText(f"分析失败：{message}")
+        self._update_buttons()
 
     @staticmethod
     def _work_inspect(task: Task, rows: list[ScanRow]) -> int:
@@ -401,6 +419,7 @@ class ArchivesPage(Page):
         task.succeeded.connect(self._on_extract_finished)
         task.failed.connect(self._on_extract_failed)
         task.cancelled_signal.connect(self._on_extract_cancelled)
+        task.finished.connect(lambda: self._forget_task(task))
         self._task = task
         self.context.tasks.start(task)
 
@@ -493,12 +512,12 @@ class ArchivesPage(Page):
         self._update_buttons()
 
     def _cancel(self) -> None:
-        if self._task is not None and self._task.isRunning():
+        if is_running(self._task):
             self._task.request_cancel()
             self.status_label.setText("正在取消…")
 
     def _update_buttons(self) -> None:
-        busy = self._task is not None and self._task.isRunning()
+        busy = is_running(self._task)
         self.extract_btn.setEnabled(bool(self.table.selectedIndexes()) and not busy)
         self.scan_btn.setEnabled(not busy)
         self.table.setEnabled(not busy)

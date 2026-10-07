@@ -38,7 +38,7 @@ from ...core.archive import (
 from ...core.formatting import human_size, truncate_middle
 from ...core.library import FolderImportResult, LibraryError
 from ...core.models import ArchiveInspection, Mod
-from ...services.worker import Task, TaskCancelled
+from ...services.worker import Task, TaskCancelled, is_running
 from ..theme import SPACE_LG, SPACE_SM
 from ..widgets.common import EmptyState, button, icon_button
 from ..widgets.drop_zone import DropZone
@@ -231,7 +231,7 @@ class ImportPage(Page):
     # ------------------------------------------------------------------
 
     def _import_folder(self) -> None:
-        if self._task is not None and self._task.isRunning():
+        if is_running(self._task):
             self.context.notify("已有任务在运行，请稍候", "warning")
             return
 
@@ -287,6 +287,7 @@ class ImportPage(Page):
         task.succeeded.connect(self._on_folder_imported)
         task.failed.connect(self._on_failed)
         task.cancelled_signal.connect(self._on_cancelled)
+        task.finished.connect(lambda: self._forget_task(task))
 
         self._task = task
         self._update_buttons()
@@ -441,8 +442,18 @@ class ImportPage(Page):
         dialog = _EntryDialog(item, self.colors, self)
         dialog.exec()
 
+    def _forget_task(self, task: Task) -> None:
+        """任务结束后解除引用。
+
+        ``TaskManager`` 会在任务结束时 ``deleteLater()`` 掉 C++ 对象；只接
+        succeeded/failed 会漏掉取消路径，留下一个指向已销毁对象的引用。
+        ``finished`` 是唯一一定会发的信号，用它兜底。
+        """
+        if self._task is task:
+            self._task = None
+
     def _update_buttons(self) -> None:
-        busy = self._task is not None and self._task.isRunning()
+        busy = is_running(self._task)
         ready_count = sum(1 for item in self._queue if item.ready)
         can_install = self.context.is_ready or not self.check_install.isChecked()
 
@@ -510,6 +521,7 @@ class ImportPage(Page):
         task.succeeded.connect(self._on_finished)
         task.failed.connect(self._on_failed)
         task.cancelled_signal.connect(self._on_cancelled)
+        task.finished.connect(lambda: self._forget_task(task))
 
         self._task = task
         self._progress_base = 0
@@ -665,7 +677,7 @@ class ImportPage(Page):
         self._update_buttons()
 
     def _cancel_import(self) -> None:
-        if self._task is not None and self._task.isRunning():
+        if is_running(self._task):
             self._task.request_cancel()
             self.progress_label.setText("正在取消…")
 
