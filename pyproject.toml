@@ -27,9 +27,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yukinozsy411-debug/StellarBlade-ModManager"
-Source = "https://github.com/yukinozsy411-debug/StellarBlade-ModManager"
-Issues = "https://github.com/yukinozsy411-debug/StellarBlade-ModManager/issues"
+Homepage = "https://github.com/Luoyinxue-Yukino/StellarBlade-ModManager"
+Source = "https://github.com/Luoyinxue-Yukino/StellarBlade-ModManager"
+Issues = "https://github.com/Luoyinxue-Yukino/StellarBlade-ModManager/issues"
 
 [project.gui-scripts]
 stellar-mod-manager = "stellar_mod_manager.__main__:main"
