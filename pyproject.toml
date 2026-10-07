@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "落樱雪" }]
+authors = [{ name = "落樱雪-yukino" }]
 keywords = ["stellar-blade", "mod-manager", "mods", "pyside6", "qt", "game-modding"]
 classifiers = [
     "Development Status :: 4 - Beta",
