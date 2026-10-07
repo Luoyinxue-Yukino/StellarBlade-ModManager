@@ -232,14 +232,24 @@ class LibraryPage(Page):
     def _sync_groups(self) -> None:
         """扫描之后和分组对账。
 
-        两件事：首次使用时建好默认分类；把已经不在库里的 Mod 的归属记录清掉，
-        否则 ``groups.json`` 会随着增删 Mod 无限膨胀。
+        首次使用时建好默认分类；把已经不在库里的 Mod 的归属记录清掉，
+        否则 ``groups.json`` 会随着增删 Mod 膨胀。
+
+        **扫描结果为空时绝不做清理。** 那通常意味着游戏目录暂时不可用、盘符掉线或
+        配置被改坏，而不是 Mod 真的都没了——此时清空会让用户手工整理的分级全丢。
+        宁可留几条失效记录，也不能冒这个险。
         """
         groups = self.context.groups
         if groups.ensure_defaults():
             logger.info("首次使用，已创建默认分组")
+
         known = {mod.name for mod in self._mods}
-        groups.forget_mods(known)
+        if not known:
+            logger.warning("本次扫描没有找到任何 Mod，跳过分组归属清理以免误删")
+            return
+        removed = groups.forget_mods(known)
+        if removed:
+            logger.info("清理了 %d 条失效的分组归属记录", removed)
 
     def _update_banner(self) -> None:
         unmanaged = [m for m in self._mods if not m.in_library]

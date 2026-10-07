@@ -269,6 +269,82 @@ def test_forget_mods_drops_stale_records(seeded: GroupTree) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 数据保护
+# ---------------------------------------------------------------------------
+
+
+def test_forget_mods_refuses_empty_keep(seeded: GroupTree) -> None:
+    """回归：扫描返回空时曾把全部分类清空。
+
+    扫描为空几乎总是「游戏目录暂时不可用」，不是「Mod 真的都没了」。
+    用户的分类是手工整理的，宁可留几条失效记录也不能清空。
+    """
+    dress = seeded.find_by_name("服装")
+    assert dress is not None
+    seeded.assign_many([f"Mod_{i}" for i in range(20)], dress.id)
+
+    assert seeded.forget_mods(set()) == 0
+    assert len(seeded._assignments) == 20
+    # 磁盘上也不能少
+    import json
+
+    raw = json.loads(seeded.path.read_text(encoding="utf-8"))
+    assert len(raw["assignments"]) == 20
+
+
+def test_save_keeps_a_backup_of_the_previous_version(seeded: GroupTree) -> None:
+    """每次写盘前留一份上一版，出事时改名即可回退。
+
+    备份永远是「写入**前**」的那一版，所以刚写完 A 时备份里还没有 A。
+    """
+    backup = seeded.path.with_suffix(seeded.path.suffix + ".bak")
+    dress = seeded.find_by_name("服装")
+    assert dress is not None
+
+    seeded.assign_many(["A"], dress.id)
+    assert backup.is_file(), "覆盖写入后应当产生备份"
+    # 这一次的备份是「还没有 A」的那一版
+    assert '"A"' not in backup.read_text(encoding="utf-8")
+
+    seeded.assign_many(["B"], dress.id)
+    # 这一次的备份是「有 A、还没 B」的那一版
+    snapshot = backup.read_text(encoding="utf-8")
+    assert '"A"' in snapshot
+    assert '"B"' not in snapshot
+
+
+def test_backup_is_readable_as_a_group_tree(seeded: GroupTree) -> None:
+    """备份必须是能直接改名回主文件的合法存档，否则留着也没用。"""
+    dress = seeded.find_by_name("服装")
+    assert dress is not None
+    seeded.assign_many(["A"], dress.id)
+    seeded.assign_many(["B"], dress.id)
+
+    backup = seeded.path.with_suffix(seeded.path.suffix + ".bak")
+    restored = GroupTree(backup)
+    assert [g.name for g in restored.roots()] == ["服装", "武器", "玩法", "其他"]
+    assert restored.group_of("A") == dress.id
+
+
+def test_backup_is_not_created_for_missing_file(tree: GroupTree) -> None:
+    """首次写入没有「上一版」可备份，不该凭空造一个空备份。"""
+    tree.create("第一个分组")
+    backup = tree.path.with_suffix(tree.path.suffix + ".bak")
+    assert not backup.exists()
+
+
+def test_partial_scan_still_prunes(seeded: GroupTree) -> None:
+    """扫描结果非空时照常清理——保护只针对「完全扫不到」这一种情况。"""
+    dress = seeded.find_by_name("服装")
+    assert dress is not None
+    seeded.assign_many(["还在", "已删除"], dress.id)
+
+    assert seeded.forget_mods({"还在"}) == 1
+    assert seeded.group_of("还在") == dress.id
+    assert seeded.group_of("已删除") is None
+
+
+# ---------------------------------------------------------------------------
 # 持久化与容错
 # ---------------------------------------------------------------------------
 

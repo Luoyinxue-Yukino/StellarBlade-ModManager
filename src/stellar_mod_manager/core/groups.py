@@ -125,7 +125,12 @@ class GroupTree:
         self._break_cycles()
 
     def save(self) -> Path:
-        """原子写入分组文件。"""
+        """原子写入分组文件，并保留上一版作为 ``.bak``。
+
+        为什么要留备份：这里存的是**用户手工整理的分类**，丢了得一条条重来。
+        它的价值远高于几 KB 的磁盘占用，所以每次写盘前先把旧版本留一份。
+        真要出事时，把 ``groups.json.bak`` 改名回 ``groups.json`` 即可。
+        """
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "version": STORE_VERSION,
@@ -136,6 +141,15 @@ class GroupTree:
         temp.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+
+        # 只在「旧文件有实际内容」时留备份，避免把空文件覆盖上去反而丢了好的那一版
+        if self.path.is_file() and self.path.stat().st_size > 0:
+            try:
+                backup = self.path.with_suffix(self.path.suffix + ".bak")
+                backup.write_bytes(self.path.read_bytes())
+            except OSError as exc:  # 备份失败不该拦住正常写入
+                logger.warning("分组备份失败：%s", exc)
+
         temp.replace(self.path)
         return self.path
 
@@ -389,7 +403,14 @@ class GroupTree:
 
         用于库扫描之后对账：Mod 被删掉了，它的归属记录也该跟着走，
         否则 ``groups.json`` 会越积越多。
+
+        **``keep`` 为空时直接拒绝。** 那通常意味着扫描失败（游戏目录暂时不可用、
+        盘符掉线、配置被改坏），而不是「用户的 Mod 真的一个都不剩了」。
+        此时清空归属等于把用户手工整理的分类全删掉，代价远大于留几条失效记录。
         """
+        if not keep:
+            logger.warning("扫描结果为空，拒绝清理分组归属（可能是游戏目录暂时不可用）")
+            return 0
         stale = [m for m in self._assignments if m not in keep]
         for mod_name in stale:
             del self._assignments[mod_name]
