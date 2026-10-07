@@ -89,6 +89,21 @@ def log_file_path() -> Path:
     return paths.app_data_dir() / LOG_FILENAME
 
 
+def _print_safely(text: str) -> None:
+    """往 stderr 写一句话，但**绝不因为写不出去而抛异常**。
+
+    冻结成 GUI 程序后 ``sys.stderr`` 可能是 ``None``；英文 Windows 上它的编码
+    还可能是 cp1252，写中文会抛 :class:`UnicodeEncodeError`。两种情况都不该
+    让「日志初始化」本身成为崩溃点。
+    """
+    if sys.stderr is None:
+        return
+    try:
+        print(text, file=sys.stderr)
+    except (OSError, UnicodeEncodeError, ValueError):
+        pass
+
+
 def setup_logging(level: int = logging.INFO, *, console: bool = True) -> Path:
     """配置根日志器，返回日志文件路径。重复调用是安全的。"""
     paths.ensure_app_dirs()
@@ -109,9 +124,12 @@ def setup_logging(level: int = logging.INFO, *, console: bool = True) -> Path:
             file_handler.setLevel(logging.DEBUG)
             root.addHandler(file_handler)
         except OSError as exc:  # 日志写不了也不能拦住程序
-            print(f"无法创建日志文件：{exc}", file=sys.stderr)
+            _print_safely(f"无法创建日志文件：{exc}")
 
-        if console:
+        # 打包成 GUI 程序后 stdout/stderr 可能压根不存在（PyInstaller 的
+        # windowed 模式），这时挂控制台处理器会让每条日志都触发一次
+        # AttributeError。没有流就只写文件。
+        if console and sys.stderr is not None:
             stream = logging.StreamHandler(sys.stderr)
             stream.setFormatter(formatter)
             stream.setLevel(level)

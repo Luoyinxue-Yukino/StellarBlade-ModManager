@@ -13,6 +13,13 @@ on:
 permissions:
   contents: write
 
+env:
+  # 本项目所有输出都是中文，而英文 Windows runner 的 stdout 默认是 cp1252，
+  # 打印中文会直接抛 UnicodeEncodeError。脚本里各自也做了 UTF-8 重配置，
+  # 这里再兜一层，覆盖任何遗漏的输出路径。
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+
 jobs:
   build:
     # 界面是 Windows 专属的（Qt 平台插件、路径习惯），只能在 windows 上打

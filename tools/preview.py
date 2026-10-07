@@ -20,6 +20,12 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
+# 本脚本会 print 中文；英文 Windows 上 stdout 被重定向时是 cp1252，
+# 不加这一步会在第一句输出就抛 UnicodeEncodeError（CI 上踩过）。
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 

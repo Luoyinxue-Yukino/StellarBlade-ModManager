@@ -21,6 +21,14 @@ import sys
 import zipfile
 from pathlib import Path
 
+# 必须在任何 print 之前：本脚本的输出全是中文，而英文 Windows 上
+# stdout 被重定向时用的是 cp1252（GitHub Actions 的 windows runner 就是），
+# 直接 print 会抛 UnicodeEncodeError: 'charmap' codec can't encode character。
+# CI 上这个脚本第一次失败就死在这一行。
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
