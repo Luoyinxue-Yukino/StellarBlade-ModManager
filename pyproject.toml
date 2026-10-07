@@ -1,0 +1,51 @@
+[project]
+name = "stellar-mod-manager"
+version = "0.1.0"
+description = "《剑星》(Stellar Blade) 的图形化 Mod 管理器 —— 安装、分组、冲突检测"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "落樱雪" }]
+keywords = ["stellar-blade", "mod-manager", "mods", "pyside6", "qt", "game-modding"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Win32 (MS Windows)",
+    "Intended Audience :: End Users/Desktop",
+    "Natural Language :: Chinese (Simplified)",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Games/Entertainment",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "PySide6-Essentials>=6.7.0",
+    "py7zr>=0.21.0",
+    "rarfile>=4.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/yukinozsy411-debug/StellarBlade-ModManager"
+Source = "https://github.com/yukinozsy411-debug/StellarBlade-ModManager"
+Issues = "https://github.com/yukinozsy411-debug/StellarBlade-ModManager/issues"
+
+[project.gui-scripts]
+stellar-mod-manager = "stellar_mod_manager.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/stellar_mod_manager"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

@@ -1,0 +1,21 @@
+# 统一换行符：仓库里一律 LF，检出到 Windows 时也保持 LF。
+# 这个项目的源码全部是 LF，若不声明，Git 在 Windows 上会把它们改成 CRLF，
+# 于是每次提交都出现整文件 diff，历史会变得没法看。
+* text=auto eol=lf
+
+# 二进制文件不要做任何换行转换，否则会被改坏
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.ico  binary
+*.zip  binary
+*.7z   binary
+*.rar  binary
+*.pak  binary
+*.ucas binary
+*.utoc binary
+
+# 锁文件与生成物在 diff 里没有阅读价值
+uv.lock      linguist-generated=true
+*.png        linguist-documentation=true
+docs/screenshots/* linguist-documentation=true
